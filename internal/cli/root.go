@@ -21,6 +21,7 @@ func NewRootCmdWithDependencies(deps Dependencies) *cobra.Command {
 		Short:         "Read and edit PDF metadata",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Version:       deps.Version,
 	}
 
 	cmd.AddCommand(newShowCmd(handlers))
@@ -28,6 +29,10 @@ func NewRootCmdWithDependencies(deps Dependencies) *cobra.Command {
 	cmd.AddCommand(newUnsetCmd(handlers))
 	cmd.AddCommand(newBatchCmd(handlers))
 	cmd.AddCommand(newTemplateCmd(handlers))
+	cmd.AddCommand(newVersionCmd(deps.Version))
+	if deps.Autoupdate != nil {
+		cmd.AddCommand(newAutoupdateCmd(deps.Autoupdate))
+	}
 
 	return cmd
 }

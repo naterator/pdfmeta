@@ -28,7 +28,6 @@ Override with env var:
 PDFMETA_TEMPLATE_STORE=/tmp/templates.json ./pdfmeta template save --name rel --title "Release"
 ```
 
-## Docs
-- [docs/README.md]()
-- [docs/cli-reference.md]()
-- [docs/usage-notes.md]()
+## License
+
+[BSD 3-Clause](./LICENSE)

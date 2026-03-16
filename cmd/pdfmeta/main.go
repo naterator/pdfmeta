@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +11,14 @@ import (
 )
 
 func run(args []string, stdout, stderr io.Writer) int {
-	if err := cli.Execute(args, stdout, stderr); err != nil {
+	deps := cli.Dependencies{
+		Version: appVersion,
+		Autoupdate: func(ctx context.Context, stdout io.Writer) error {
+			return runAutoupdate(ctx, stdout)
+		},
+	}
+
+	if err := cli.ExecuteWithDependencies(args, stdout, stderr, deps); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return model.ExitCode(err)
 	}

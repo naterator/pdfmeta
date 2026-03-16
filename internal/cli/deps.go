@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"io"
 	"os"
 
 	"pdfmeta/internal/app"
@@ -10,7 +12,9 @@ import (
 
 // Dependencies are injectable CLI runtime dependencies.
 type Dependencies struct {
-	Service model.Service
+	Service    model.Service
+	Version    string
+	Autoupdate func(context.Context, io.Writer) error
 }
 
 func (d Dependencies) withDefaults() Dependencies {
@@ -18,6 +22,9 @@ func (d Dependencies) withDefaults() Dependencies {
 		d.Service = app.NewService(app.ServiceConfig{
 			TemplateStore: template.NewFileStore(os.Getenv("PDFMETA_TEMPLATE_STORE")),
 		})
+	}
+	if d.Version == "" {
+		d.Version = "unknown"
 	}
 	return d
 }

@@ -62,11 +62,11 @@ func newUnsetCmd(handlers *app.Handlers) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&f.file, "file", "", "Input PDF file")
-	cmd.Flags().StringVar(&f.out, "out", "", "Output PDF file")
-	cmd.Flags().BoolVar(&f.inPlace, "in-place", false, "Modify file in place using safe atomic replace")
-	cmd.Flags().BoolVar(&f.strict, "strict", false, "Reject invalid metadata instead of auto-correcting")
-	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Emit result JSON")
+	cmd.Flags().StringVarP(&f.file, "file", "f", "", "Input PDF file")
+	cmd.Flags().StringVarP(&f.out, "out", "o", "", "Output PDF file")
+	cmd.Flags().BoolVarP(&f.inPlace, "in-place", "i", false, "Modify file in place using safe atomic replace")
+	cmd.Flags().BoolVarP(&f.strict, "strict", "s", false, "Reject invalid metadata instead of auto-correcting")
+	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Emit result JSON")
 
 	cmd.Flags().BoolVar(&f.all, "all", false, "Unset all supported metadata fields")
 	cmd.Flags().BoolVar(&f.title, "title", false, "Unset Title")

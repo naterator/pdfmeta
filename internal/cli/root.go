@@ -30,8 +30,8 @@ func NewRootCmdWithDependencies(deps Dependencies) *cobra.Command {
 	cmd.AddCommand(newBatchCmd(handlers))
 	cmd.AddCommand(newTemplateCmd(handlers))
 	cmd.AddCommand(newVersionCmd(deps.Version))
-	if deps.Autoupdate != nil {
-		cmd.AddCommand(newAutoupdateCmd(deps.Autoupdate))
+	if deps.Selfupdate != nil {
+		cmd.AddCommand(newSelfupdateCmd(deps.Selfupdate))
 	}
 
 	return cmd

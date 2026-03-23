@@ -20,12 +20,11 @@ func newVersionCmd(version string) *cobra.Command {
 	}
 }
 
-func newAutoupdateCmd(run func(context.Context, io.Writer) error) *cobra.Command {
+func newSelfupdateCmd(run func(context.Context, io.Writer) error) *cobra.Command {
 	return &cobra.Command{
-		Use:                "autoupdate",
-		Short:              "Download and install the latest release",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
+		Use:   "selfupdate",
+		Short: "Download and install the latest release",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return run(context.Background(), cmd.OutOrStdout())
 		},

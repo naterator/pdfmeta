@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -54,9 +55,9 @@ func newDefaultReleaseUpdater() releaseUpdater {
 	}
 }
 
-func runAutoupdate(ctx context.Context, stdout io.Writer) error {
+func runSelfupdate(ctx context.Context, stdout io.Writer) error {
 	if err := makeReleaseUpdater().Run(ctx, appVersion, stdout); err != nil {
-		return fmt.Errorf("autoupdate failed: %w", err)
+		return fmt.Errorf("selfupdate failed: %w", err)
 	}
 	return nil
 }
@@ -158,17 +159,13 @@ func (u *githubReleaseUpdater) fetchChecksum(ctx context.Context, checksumURL, b
 }
 
 func (u *githubReleaseUpdater) downloadAndReplace(ctx context.Context, exePath, assetURL, expectedChecksum string) error {
-	if strings.EqualFold(u.goos, "windows") {
-		return fmt.Errorf("autoupdate is not supported on windows yet")
-	}
-
 	info, err := os.Stat(exePath)
 	if err != nil {
 		return fmt.Errorf("stat current executable %q: %w", exePath, err)
 	}
 
 	dir := filepath.Dir(exePath)
-	tempFile, err := os.CreateTemp(dir, "."+appName+"-autoupdate-*")
+	tempFile, err := os.CreateTemp(dir, "."+appName+"-selfupdate-*")
 	if err != nil {
 		return fmt.Errorf("create temporary download file: %w", err)
 	}
@@ -250,6 +247,9 @@ func (u *githubReleaseUpdater) get(ctx context.Context, url string) (*http.Respo
 }
 
 func (r githubRelease) assetsForRuntime(goos, goarch string) (githubReleaseAsset, githubReleaseAsset, error) {
+	if strings.EqualFold(goos, "windows") {
+		return githubReleaseAsset{}, githubReleaseAsset{}, fmt.Errorf("selfupdate is not supported on windows yet")
+	}
 	binaryCandidates, checksumCandidates := releaseAssetCandidates(goos, goarch)
 	binaryAsset, ok := findReleaseAsset(r.Assets, binaryCandidates...)
 	if !ok {
@@ -387,6 +387,9 @@ func normalizeSemver(version string) (string, error) {
 				return "", fmt.Errorf("version must use vMAJOR.MINOR.PATCH")
 			}
 		}
+		if len(part) > 1 && part[0] == '0' {
+			return "", fmt.Errorf("version must use vMAJOR.MINOR.PATCH (no leading zeros)")
+		}
 	}
 	return version, nil
 }
@@ -394,15 +397,13 @@ func normalizeSemver(version string) (string, error) {
 func compareSemver(a, b string) int {
 	aParts := strings.Split(strings.TrimPrefix(a, "v"), ".")
 	bParts := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
+		ai, _ := strconv.Atoi(aParts[i])
+		bi, _ := strconv.Atoi(bParts[i])
 		switch {
-		case len(aParts[i]) > len(bParts[i]):
+		case ai > bi:
 			return 1
-		case len(aParts[i]) < len(bParts[i]):
-			return -1
-		case aParts[i] > bParts[i]:
-			return 1
-		case aParts[i] < bParts[i]:
+		case ai < bi:
 			return -1
 		}
 	}

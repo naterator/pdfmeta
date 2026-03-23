@@ -44,8 +44,7 @@ type templateShowFlags struct {
 }
 
 type templateDeleteFlags struct {
-	name  string
-	force bool
+	name string
 }
 
 func newTemplateCmd(handlers *app.Handlers) *cobra.Command {
@@ -87,7 +86,7 @@ func newTemplateSaveCmd(handlers *app.Handlers) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&f.name, "name", "", "Template name")
+	cmd.Flags().StringVarP(&f.name, "name", "n", "", "Template name")
 	cmd.Flags().StringVar(&f.note, "note", "", "Template description")
 	cmd.Flags().BoolVar(&f.force, "force", false, "Overwrite existing template")
 	cmd.Flags().StringVar(&f.title, "title", "", "Title")
@@ -164,12 +163,12 @@ func newTemplateApplyCmd(handlers *app.Handlers) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&f.name, "name", "", "Template name")
-	cmd.Flags().StringVar(&f.file, "file", "", "Input PDF file")
-	cmd.Flags().StringVar(&f.out, "out", "", "Output PDF file")
-	cmd.Flags().BoolVar(&f.inPlace, "in-place", false, "Modify file in place using safe atomic replace")
-	cmd.Flags().BoolVar(&f.strict, "strict", false, "Reject invalid metadata instead of auto-correcting")
-	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Emit result JSON")
+	cmd.Flags().StringVarP(&f.name, "name", "n", "", "Template name")
+	cmd.Flags().StringVarP(&f.file, "file", "f", "", "Input PDF file")
+	cmd.Flags().StringVarP(&f.out, "out", "o", "", "Output PDF file")
+	cmd.Flags().BoolVarP(&f.inPlace, "in-place", "i", false, "Modify file in place using safe atomic replace")
+	cmd.Flags().BoolVarP(&f.strict, "strict", "s", false, "Reject invalid metadata instead of auto-correcting")
+	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Emit result JSON")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("file")
 
@@ -193,7 +192,7 @@ func newTemplateListCmd(handlers *app.Handlers) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Emit result JSON")
+	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Emit result JSON")
 
 	return cmd
 }
@@ -215,8 +214,8 @@ func newTemplateShowCmd(handlers *app.Handlers) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&f.name, "name", "", "Template name")
-	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Emit result JSON")
+	cmd.Flags().StringVarP(&f.name, "name", "n", "", "Template name")
+	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Emit result JSON")
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
@@ -229,13 +228,11 @@ func newTemplateDeleteCmd(handlers *app.Handlers) *cobra.Command {
 		Use:   "delete",
 		Short: "Delete template",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = f.force
 			return handlers.TemplateDelete(context.Background(), f.name)
 		},
 	}
 
-	cmd.Flags().StringVar(&f.name, "name", "", "Template name")
-	cmd.Flags().BoolVar(&f.force, "force", false, "Delete without confirmation")
+	cmd.Flags().StringVarP(&f.name, "name", "n", "", "Template name")
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd

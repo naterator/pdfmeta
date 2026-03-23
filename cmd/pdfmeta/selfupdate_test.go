@@ -40,14 +40,14 @@ func withReleaseUpdaterStub(t *testing.T, updater releaseUpdater) {
 	})
 }
 
-func TestRunAutoupdateCommandRunsUpdater(t *testing.T) {
+func TestRunSelfupdateCommandRunsUpdater(t *testing.T) {
 	stub := &stubReleaseUpdater{}
 	withReleaseUpdaterStub(t, stub)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := run([]string{"autoupdate"}, &stdout, &stderr)
+	exitCode := run([]string{"selfupdate"}, &stdout, &stderr)
 	if exitCode != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr=%q", exitCode, stderr.String())
 	}
@@ -62,40 +62,37 @@ func TestRunAutoupdateCommandRunsUpdater(t *testing.T) {
 	}
 }
 
-func TestRunAutoupdateCommandIgnoresExtraArgs(t *testing.T) {
+func TestRunSelfupdateCommandRejectsExtraArgs(t *testing.T) {
 	stub := &stubReleaseUpdater{}
 	withReleaseUpdaterStub(t, stub)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := run([]string{"autoupdate", "--json", "--file", "ignored.pdf"}, &stdout, &stderr)
-	if exitCode != 0 {
-		t.Fatalf("exit code = %d, want 0; stderr=%q", exitCode, stderr.String())
+	exitCode := run([]string{"selfupdate", "unexpected-arg"}, &stdout, &stderr)
+	if exitCode == 0 {
+		t.Fatalf("expected non-zero exit code for extra args")
 	}
-	if stub.runCalls != 1 {
-		t.Fatalf("stub updater runCalls = %d, want 1", stub.runCalls)
-	}
-	if !strings.Contains(stdout.String(), "stub updater invoked") {
-		t.Fatalf("stdout = %q", stdout.String())
+	if stub.runCalls != 0 {
+		t.Fatalf("stub updater runCalls = %d, want 0", stub.runCalls)
 	}
 }
 
-func TestRunAutoupdateReportsUpdaterError(t *testing.T) {
+func TestRunSelfupdateReportsUpdaterError(t *testing.T) {
 	stub := &stubReleaseUpdater{err: io.EOF}
 	withReleaseUpdaterStub(t, stub)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := run([]string{"autoupdate"}, &stdout, &stderr)
+	exitCode := run([]string{"selfupdate"}, &stdout, &stderr)
 	if exitCode != 1 {
 		t.Fatalf("exit code = %d, want 1", exitCode)
 	}
 	if stub.runCalls != 1 {
 		t.Fatalf("stub updater runCalls = %d, want 1", stub.runCalls)
 	}
-	if !strings.Contains(stderr.String(), "autoupdate failed: EOF") {
+	if !strings.Contains(stderr.String(), "selfupdate failed: EOF") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
@@ -310,4 +307,161 @@ func TestGitHubReleaseUpdaterRejectsChecksumMismatch(t *testing.T) {
 	if string(got) != "old-binary" {
 		t.Fatalf("executable content = %q, want old-binary", string(got))
 	}
+}
+
+func TestNormalizeSemver(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{input: "v1.0.0", want: "v1.0.0"},
+		{input: "1.0.0", want: "v1.0.0"},
+		{input: "v0.0.1", want: "v0.0.1"},
+		{input: "v10.20.30", want: "v10.20.30"},
+		{input: " v1.2.3 ", want: "v1.2.3"},
+		{input: "", wantErr: true},
+		{input: "v1.0", wantErr: true},
+		{input: "v1.0.0.0", wantErr: true},
+		{input: "v1.0.a", wantErr: true},
+		{input: "v1..0", wantErr: true},
+		{input: "v01.0.0", wantErr: true},
+		{input: "v1.00.0", wantErr: true},
+		{input: "v1.0.00", wantErr: true},
+		{input: "v1.0.0-beta", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			got, err := normalizeSemver(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("normalizeSemver(%q) = %q, want error", tt.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("normalizeSemver(%q) error: %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("normalizeSemver(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeSemverLoose(t *testing.T) {
+	t.Parallel()
+	if got, ok := normalizeSemverLoose("v1.2.3"); !ok || got != "v1.2.3" {
+		t.Fatalf("normalizeSemverLoose(v1.2.3) = %q, %v", got, ok)
+	}
+	if _, ok := normalizeSemverLoose("garbage"); ok {
+		t.Fatalf("normalizeSemverLoose(garbage) unexpectedly succeeded")
+	}
+	if _, ok := normalizeSemverLoose(""); ok {
+		t.Fatalf("normalizeSemverLoose(\"\") unexpectedly succeeded")
+	}
+}
+
+func TestCompareSemver(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		{a: "v1.0.0", b: "v1.0.0", want: 0},
+		{a: "v2.0.0", b: "v1.0.0", want: 1},
+		{a: "v1.0.0", b: "v2.0.0", want: -1},
+		{a: "v1.1.0", b: "v1.0.0", want: 1},
+		{a: "v1.0.1", b: "v1.0.0", want: 1},
+		{a: "v1.0.0", b: "v1.0.1", want: -1},
+		{a: "v1.0.10", b: "v1.0.9", want: 1},
+		{a: "v1.0.9", b: "v1.0.10", want: -1},
+		{a: "v10.0.0", b: "v9.0.0", want: 1},
+		{a: "v9.0.0", b: "v10.0.0", want: -1},
+		{a: "v0.0.0", b: "v0.0.0", want: 0},
+		{a: "v100.200.300", b: "v100.200.300", want: 0},
+		{a: "v1.0.2", b: "v1.0.1", want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.a+"_vs_"+tt.b, func(t *testing.T) {
+			t.Parallel()
+			if got := compareSemver(tt.a, tt.b); got != tt.want {
+				t.Fatalf("compareSemver(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAssetsForRuntimeRejectsWindows(t *testing.T) {
+	t.Parallel()
+	release := githubRelease{
+		TagName: "v1.0.0",
+		Assets: []githubReleaseAsset{
+			{Name: "pdfmeta-windows-amd64.exe", BrowserDownloadURL: "https://example.com/bin"},
+			{Name: "pdfmeta-windows-amd64.exe.sha256", BrowserDownloadURL: "https://example.com/sum"},
+		},
+	}
+	_, _, err := release.assetsForRuntime("windows", "amd64")
+	if err == nil {
+		t.Fatal("assetsForRuntime(windows) unexpectedly succeeded")
+	}
+	if !strings.Contains(err.Error(), "not supported on windows") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseSHA256File(t *testing.T) {
+	t.Parallel()
+	hash := strings.Repeat("ab", 32)
+
+	t.Run("named match", func(t *testing.T) {
+		t.Parallel()
+		got, err := parseSHA256File(hash+"  mybin\n", "mybin")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != hash {
+			t.Fatalf("got %q, want %q", got, hash)
+		}
+	})
+
+	t.Run("single unnamed", func(t *testing.T) {
+		t.Parallel()
+		got, err := parseSHA256File(hash+"\n", "anything")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != hash {
+			t.Fatalf("got %q, want %q", got, hash)
+		}
+	})
+
+	t.Run("multiple unnamed", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseSHA256File(hash+"\n"+strings.Repeat("cd", 32)+"\n", "anything")
+		if err == nil {
+			t.Fatal("expected error for multiple unnamed digests")
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseSHA256File(hash+"  otherbin\n", "mybin")
+		if err == nil {
+			t.Fatal("expected error for missing asset")
+		}
+	})
+
+	t.Run("key=value format", func(t *testing.T) {
+		t.Parallel()
+		got, err := parseSHA256File("SHA256="+hash+"\n", "mybin")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != hash {
+			t.Fatalf("got %q, want %q", got, hash)
+		}
+	})
 }

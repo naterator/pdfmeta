@@ -40,8 +40,8 @@ func newShowCmd(handlers *app.Handlers) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&f.file, "file", "", "Input PDF file")
-	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Output JSON")
+	cmd.Flags().StringVarP(&f.file, "file", "f", "", "Input PDF file")
+	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Output JSON")
 	_ = cmd.MarkFlagRequired("file")
 
 	return cmd

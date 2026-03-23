@@ -194,7 +194,7 @@ func TestTemplateCommandsWireRequests(t *testing.T) {
 		t.Fatalf("unexpected template show name: %q", svc.templateShowName)
 	}
 
-	cmd.SetArgs([]string{"template", "delete", "--name", "release", "--force"})
+	cmd.SetArgs([]string{"template", "delete", "--name", "release"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute template delete: %v", err)
 	}

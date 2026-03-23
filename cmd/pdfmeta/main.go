@@ -13,8 +13,8 @@ import (
 func run(args []string, stdout, stderr io.Writer) int {
 	deps := cli.Dependencies{
 		Version: appVersion,
-		Autoupdate: func(ctx context.Context, stdout io.Writer) error {
-			return runAutoupdate(ctx, stdout)
+		Selfupdate: func(ctx context.Context, stdout io.Writer) error {
+			return runSelfupdate(ctx, stdout)
 		},
 	}
 

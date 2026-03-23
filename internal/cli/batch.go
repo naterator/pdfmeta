@@ -40,10 +40,10 @@ func newBatchCmd(handlers *app.Handlers) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&f.manifest, "manifest", "", "Path to batch manifest file")
+	cmd.Flags().StringVarP(&f.manifest, "manifest", "m", "", "Path to batch manifest file")
 	cmd.Flags().BoolVar(&f.continueOnFail, "continue-on-error", false, "Continue processing after individual file failures")
-	cmd.Flags().BoolVar(&f.strict, "strict", false, "Reject invalid metadata instead of auto-correcting")
-	cmd.Flags().BoolVar(&f.asJSON, "json", false, "Emit result JSON")
+	cmd.Flags().BoolVarP(&f.strict, "strict", "s", false, "Reject invalid metadata instead of auto-correcting")
+	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Emit result JSON")
 	_ = cmd.MarkFlagRequired("manifest")
 
 	return cmd

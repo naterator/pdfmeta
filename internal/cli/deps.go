@@ -14,7 +14,7 @@ import (
 type Dependencies struct {
 	Service    model.Service
 	Version    string
-	Autoupdate func(context.Context, io.Writer) error
+	Selfupdate func(context.Context, io.Writer) error
 }
 
 func (d Dependencies) withDefaults() Dependencies {

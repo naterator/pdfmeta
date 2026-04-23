@@ -27,12 +27,16 @@ Show metadata from a PDF.
 ```bash
 pdfmeta show --file in.pdf
 pdfmeta show --file in.pdf --json
+pdfmeta show --file in.pdf --only-set
+pdfmeta show --file in.pdf --field title --field author
 ```
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--file` | `-f` | Input PDF file (required) |
 | `--json` | `-j` | Output JSON |
+| `--only-set` | | Show only fields that currently have values |
+| `--field` | | Limit output to specific metadata fields |
 
 ### set
 
@@ -41,6 +45,7 @@ Set metadata fields. Requires `--out` or `--in-place`.
 ```bash
 pdfmeta set --file in.pdf --out out.pdf --title "Doc" --author "Team"
 pdfmeta set --file in.pdf --in-place --subject "Notes" --strict
+pdfmeta set --file in.pdf --out out.pdf --from-json meta.json --title "Override Title"
 ```
 
 | Flag | Short | Description |
@@ -50,6 +55,7 @@ pdfmeta set --file in.pdf --in-place --subject "Notes" --strict
 | `--in-place` | `-i` | Modify file in place using safe atomic replace |
 | `--strict` | `-s` | Reject invalid metadata instead of auto-correcting |
 | `--json` | `-j` | Emit result JSON |
+| `--from-json` | | Read metadata fields from a JSON file or `-` for stdin |
 | `--title` | | Title |
 | `--author` | | Author |
 | `--subject` | | Subject |
@@ -92,11 +98,12 @@ Apply metadata operations to many PDFs via a JSON manifest.
 ```bash
 pdfmeta batch --manifest ops.json
 pdfmeta batch --manifest ops.json --continue-on-error --json
+cat ops.json | pdfmeta batch --manifest -
 ```
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--manifest` | `-m` | Path to batch manifest file (required) |
+| `--manifest` | `-m` | Path to batch manifest file or `-` for stdin (required) |
 | `--continue-on-error` | | Continue processing after individual file failures |
 | `--strict` | `-s` | Reject invalid metadata instead of auto-correcting |
 | `--json` | `-j` | Emit result JSON |
@@ -123,6 +130,7 @@ pdfmeta template save --name rel --title "v2" --force
 
 ```bash
 pdfmeta template apply --name rel --file in.pdf --out out.pdf
+pdfmeta template apply --name rel --file in.pdf --out out.pdf --title "Hotfix Notes"
 ```
 
 | Flag | Short | Description |
@@ -133,6 +141,7 @@ pdfmeta template apply --name rel --file in.pdf --out out.pdf
 | `--in-place` | `-i` | Modify file in place using safe atomic replace |
 | `--strict` | `-s` | Reject invalid metadata instead of auto-correcting |
 | `--json` | `-j` | Emit result JSON |
+| `--title`, `--author`, `--subject`, `--keywords`, `--creator`, `--producer`, `--creation-date`, `--mod-date` | | Override specific metadata fields after loading the template |
 
 #### template list
 
@@ -161,6 +170,33 @@ pdfmeta template delete --name rel
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--name` | `-n` | Template name (required) |
+
+#### template export
+
+Export templates as JSON using the same shape accepted by `template import`.
+
+```bash
+pdfmeta template export
+pdfmeta template export --out templates.json
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--out` | `-o` | Write export JSON to a file instead of stdout |
+
+#### template import
+
+Import templates from JSON produced by `template export`. Supports either the wrapped `{"templates":[...]}` shape or a raw array of template records.
+
+```bash
+pdfmeta template import --file templates.json
+cat templates.json | pdfmeta template import --file - --force
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Template import JSON file or `-` for stdin (required) |
+| `--force` | | Overwrite existing templates with matching names |
 
 ### version
 

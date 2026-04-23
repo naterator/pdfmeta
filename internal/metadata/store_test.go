@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"pdfmeta/internal/model"
@@ -205,6 +206,45 @@ func TestWriteCanceledContext(t *testing.T) {
 		OutputPath: out,
 	})
 	assertAppErrorCode(t, err, model.ErrInternal)
+}
+
+func TestWriteRejectsXRefStreams(t *testing.T) {
+	store := NewStore()
+	in := writePDFBytes(t, "xref-stream.pdf", []byte("%PDF-1.5\n1 0 obj\n<< /Type /XRef >>\nendobj\n%%EOF\n"))
+	out := filepath.Join(t.TempDir(), "out.pdf")
+
+	_, err := store.Write(context.Background(), model.MetadataWriteRequest{
+		InputPath:  in,
+		OutputPath: out,
+	})
+	assertAppErrorCode(t, err, model.ErrPDFMalformed)
+	if !strings.Contains(err.Error(), "xref streams") {
+		t.Fatalf("expected xref stream message, got %v", err)
+	}
+}
+
+func TestWriteRejectsObjectStreams(t *testing.T) {
+	store := NewStore()
+	in := writePDFBytes(t, "object-stream.pdf", []byte("%PDF-1.5\n1 0 obj\n<< /Type /ObjStm >>\nendobj\n%%EOF\n"))
+	out := filepath.Join(t.TempDir(), "out.pdf")
+
+	_, err := store.Write(context.Background(), model.MetadataWriteRequest{
+		InputPath:  in,
+		OutputPath: out,
+	})
+	assertAppErrorCode(t, err, model.ErrPDFMalformed)
+	if !strings.Contains(err.Error(), "object streams") {
+		t.Fatalf("expected object stream message, got %v", err)
+	}
+}
+
+func writePDFBytes(t *testing.T, name string, b []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatalf("write pdf bytes: %v", err)
+	}
+	return path
 }
 
 func assertAppErrorCode(t *testing.T, err error, want model.ErrorCode) {

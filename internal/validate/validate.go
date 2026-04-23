@@ -66,6 +66,9 @@ func TemplateApplyRequest(req model.TemplateApplyRequest) error {
 	if strings.TrimSpace(req.Name) == "" {
 		return validationError("template name is required")
 	}
+	if err := metadataPatch(req.Overrides, req.Exec.Strict); err != nil {
+		return err
+	}
 	return ioOptions(req.IO)
 }
 

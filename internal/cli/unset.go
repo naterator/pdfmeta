@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 
 	"pdfmeta/internal/app"
@@ -52,7 +50,7 @@ func newUnsetCmd(handlers *app.Handlers) *cobra.Command {
 			if err := validate.UnsetRequest(req); err != nil {
 				return err
 			}
-			result, err := handlers.Unset(context.Background(), req)
+			result, err := handlers.Unset(commandContext(cmd), req)
 			if err != nil {
 				return err
 			}

@@ -47,6 +47,20 @@ func TestWriteAtomicFromReader(t *testing.T) {
 	}
 }
 
+func TestWriteAtomicValidation(t *testing.T) {
+	t.Parallel()
+	if err := WriteAtomic("", []byte("x"), 0); err == nil {
+		t.Fatalf("expected empty path error")
+	}
+}
+
+func TestWriteAtomicFromReaderValidation(t *testing.T) {
+	t.Parallel()
+	if err := WriteAtomicFromReader("out.txt", nil, 0); err == nil {
+		t.Fatalf("expected nil reader error")
+	}
+}
+
 func TestReplaceAtomic(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

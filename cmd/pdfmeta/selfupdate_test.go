@@ -231,7 +231,7 @@ func TestGitHubReleaseUpdaterSkipsCurrentVersion(t *testing.T) {
 	}
 
 	var stdout bytes.Buffer
-	if err := updater.Run(context.Background(), appVersion, &stdout); err != nil {
+	if err := updater.Run(context.Background(), "v1.0.2", &stdout); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 

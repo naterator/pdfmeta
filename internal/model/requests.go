@@ -54,9 +54,10 @@ type TemplateSaveRequest struct {
 
 // TemplateApplyRequest applies a named template to a PDF.
 type TemplateApplyRequest struct {
-	Name string      `json:"name"`
-	IO   IOOptions   `json:"io"`
-	Exec ExecOptions `json:"exec"`
+	Name      string        `json:"name"`
+	IO        IOOptions     `json:"io"`
+	Exec      ExecOptions   `json:"exec"`
+	Overrides MetadataPatch `json:"overrides,omitempty"`
 }
 
 // TemplateRecord is the persisted template model.

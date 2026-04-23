@@ -23,6 +23,12 @@ func NewStore() *Store {
 
 var _ model.MetadataStore = (*Store)(nil)
 
+var (
+	xrefStreamPattern   = regexp.MustCompile(`(?s)\b\d+\s+\d+\s+obj\b.*?/Type\s*/XRef\b`)
+	xrefStmKeyPattern   = regexp.MustCompile(`/XRefStm\s+\d+\b`)
+	objectStreamPattern = regexp.MustCompile(`(?s)\b\d+\s+\d+\s+obj\b.*?/Type\s*/ObjStm\b`)
+)
+
 func (s *Store) Read(ctx context.Context, inputPath string) (model.MetadataReadResult, error) {
 	if err := ctxErr(ctx); err != nil {
 		return model.MetadataReadResult{}, err
@@ -61,6 +67,9 @@ func (s *Store) Write(ctx context.Context, req model.MetadataWriteRequest) (mode
 	}
 	if doc.Encrypted() {
 		return model.MetadataReadResult{}, &model.AppError{Code: model.ErrPDFEncrypted, Message: "cannot write encrypted pdf"}
+	}
+	if err := unsupportedStructureError(doc.Bytes()); err != nil {
+		return model.MetadataReadResult{}, err
 	}
 
 	current, _, _ := readNativeMetadata(doc.Bytes())
@@ -208,6 +217,23 @@ func readNativeMetadata(b []byte) (model.Metadata, bool, bool) {
 	}
 
 	return meta, infoFound, xmpFound
+}
+
+func unsupportedStructureError(b []byte) error {
+	switch {
+	case xrefStreamPattern.Match(b) || xrefStmKeyPattern.Match(b):
+		return &model.AppError{
+			Code:    model.ErrPDFMalformed,
+			Message: "cannot rewrite PDFs that use xref streams yet",
+		}
+	case objectStreamPattern.Match(b):
+		return &model.AppError{
+			Code:    model.ErrPDFMalformed,
+			Message: "cannot rewrite PDFs that use object streams yet",
+		}
+	default:
+		return nil
+	}
 }
 
 func writeNativeIncremental(src []byte, meta model.Metadata, xmpPacket []byte) ([]byte, error) {

@@ -146,7 +146,7 @@ func (s *Service) TemplateApply(ctx context.Context, req model.TemplateApplyRequ
 	return s.Set(ctx, model.SetRequest{
 		IO:      req.IO,
 		Exec:    req.Exec,
-		Changes: record.Metadata,
+		Changes: model.MergeMetadataPatch(record.Metadata, req.Overrides),
 	})
 }
 

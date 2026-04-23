@@ -108,6 +108,47 @@ func TestTemplateSaveAndApply(t *testing.T) {
 	}
 }
 
+func TestTemplateApplyMergesOverrides(t *testing.T) {
+	t.Parallel()
+
+	svc := newTestService(t)
+	in := copyFixture(t, "minimal.pdf")
+	out := filepath.Join(t.TempDir(), "templated-overrides.pdf")
+
+	title := "Template Title"
+	author := "Docs Team"
+	overrideTitle := "Hotfix Title"
+	if _, err := svc.TemplateSave(context.Background(), model.TemplateSaveRequest{
+		Name: "release",
+		Metadata: model.MetadataPatch{
+			Title:  &title,
+			Author: &author,
+		},
+	}); err != nil {
+		t.Fatalf("TemplateSave: %v", err)
+	}
+
+	res, err := svc.TemplateApply(context.Background(), model.TemplateApplyRequest{
+		Name: "release",
+		IO: model.IOOptions{
+			InputPath:  in,
+			OutputPath: out,
+		},
+		Overrides: model.MetadataPatch{
+			Title: &overrideTitle,
+		},
+	})
+	if err != nil {
+		t.Fatalf("TemplateApply: %v", err)
+	}
+	if res.Metadata.Title != overrideTitle {
+		t.Fatalf("expected override title=%q, got %q", overrideTitle, res.Metadata.Title)
+	}
+	if res.Metadata.Author != author {
+		t.Fatalf("expected template author=%q, got %q", author, res.Metadata.Author)
+	}
+}
+
 func TestBatchExecute(t *testing.T) {
 	t.Parallel()
 

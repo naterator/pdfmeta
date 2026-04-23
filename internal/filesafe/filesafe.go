@@ -15,52 +15,16 @@ func WriteAtomic(path string, content []byte, perm os.FileMode) error {
 	if path == "" {
 		return errors.New("path is required")
 	}
-	if perm == 0 {
-		perm = defaultFilePerm
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create parent dir: %w", err)
-	}
-
-	tmp, err := os.CreateTemp(dir, ".pdfmeta-tmp-*")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	tmpPath := tmp.Name()
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmpPath)
+	return writeAtomic(path, perm, func(tmp *os.File) error {
+		n, err := tmp.Write(content)
+		if err != nil {
+			return fmt.Errorf("write temp file: %w", err)
 		}
-	}()
-
-	if err := tmp.Chmod(perm); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("chmod temp file: %w", err)
-	}
-	if _, err := tmp.Write(content); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write temp file: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("sync temp file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("rename temp file: %w", err)
-	}
-	cleanup = false
-
-	if err := syncDir(dir); err != nil {
-		return fmt.Errorf("sync parent dir: %w", err)
-	}
-	return nil
+		if n != len(content) {
+			return fmt.Errorf("write temp file: short write")
+		}
+		return nil
+	})
 }
 
 // ReplaceAtomic promotes an existing staged file into target path atomically.
@@ -112,6 +76,15 @@ func WriteAtomicFromReader(path string, reader io.Reader, perm os.FileMode) erro
 	if reader == nil {
 		return errors.New("reader is required")
 	}
+	return writeAtomic(path, perm, func(tmp *os.File) error {
+		if _, err := io.Copy(tmp, reader); err != nil {
+			return fmt.Errorf("write temp file: %w", err)
+		}
+		return nil
+	})
+}
+
+func writeAtomic(path string, perm os.FileMode, write func(*os.File) error) error {
 	if perm == 0 {
 		perm = defaultFilePerm
 	}
@@ -137,9 +110,9 @@ func WriteAtomicFromReader(path string, reader io.Reader, perm os.FileMode) erro
 		_ = tmp.Close()
 		return fmt.Errorf("chmod temp file: %w", err)
 	}
-	if _, err := io.Copy(tmp, reader); err != nil {
+	if err := write(tmp); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("write temp file: %w", err)
+		return err
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()

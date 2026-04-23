@@ -128,6 +128,17 @@ func TestTemplateValidation(t *testing.T) {
 		t.Fatalf("TemplateApplyRequest unexpected error: %v", err)
 	}
 
+	overrideDate := "2026/02/17"
+	applyWithOverride := model.TemplateApplyRequest{
+		Name: "release",
+		IO:   model.IOOptions{InputPath: "in.pdf", OutputPath: "out.pdf"},
+		Exec: model.ExecOptions{Strict: true},
+		Overrides: model.MetadataPatch{
+			CreationDate: &overrideDate,
+		},
+	}
+	assertValidationError(t, TemplateApplyRequest(applyWithOverride))
+
 	badApply := model.TemplateApplyRequest{Name: "release", IO: model.IOOptions{InputPath: "in.pdf"}}
 	assertValidationError(t, TemplateApplyRequest(badApply))
 }

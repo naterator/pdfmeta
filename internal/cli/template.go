@@ -1,37 +1,33 @@
 package cli
 
 import (
-	"context"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"pdfmeta/internal/app"
+	"pdfmeta/internal/filesafe"
 	"pdfmeta/internal/model"
 	"pdfmeta/internal/output"
+	"pdfmeta/internal/template"
 	"pdfmeta/internal/validate"
 )
 
 type templateSaveFlags struct {
-	name       string
-	note       string
-	force      bool
-	title      string
-	author     string
-	subject    string
-	keywords   string
-	creator    string
-	producer   string
-	createdAt  string
-	modifiedAt string
+	name     string
+	note     string
+	force    bool
+	metadata metadataStringFlags
 }
 
 type templateApplyFlags struct {
-	name    string
-	file    string
-	out     string
-	inPlace bool
-	strict  bool
-	asJSON  bool
+	name     string
+	file     string
+	out      string
+	inPlace  bool
+	strict   bool
+	asJSON   bool
+	metadata metadataStringFlags
 }
 
 type templateListFlags struct {
@@ -47,6 +43,15 @@ type templateDeleteFlags struct {
 	name string
 }
 
+type templateExportFlags struct {
+	out string
+}
+
+type templateImportFlags struct {
+	file  string
+	force bool
+}
+
 func newTemplateCmd(handlers *app.Handlers) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "template",
@@ -57,6 +62,8 @@ func newTemplateCmd(handlers *app.Handlers) *cobra.Command {
 	cmd.AddCommand(newTemplateListCmd(handlers))
 	cmd.AddCommand(newTemplateShowCmd(handlers))
 	cmd.AddCommand(newTemplateDeleteCmd(handlers))
+	cmd.AddCommand(newTemplateExportCmd(handlers))
+	cmd.AddCommand(newTemplateImportCmd(handlers))
 	return cmd
 }
 
@@ -71,12 +78,12 @@ func newTemplateSaveCmd(handlers *app.Handlers) *cobra.Command {
 				Name:     f.name,
 				Note:     f.note,
 				Force:    f.force,
-				Metadata: patchFromTemplateSaveFlags(cmd, f),
+				Metadata: patchFromMetadataFlags(cmd, &f.metadata),
 			}
 			if err := validate.TemplateSaveRequest(req); err != nil {
 				return err
 			}
-			record, err := handlers.TemplateSave(context.Background(), req)
+			record, err := handlers.TemplateSave(commandContext(cmd), req)
 			if err != nil {
 				return err
 			}
@@ -89,46 +96,10 @@ func newTemplateSaveCmd(handlers *app.Handlers) *cobra.Command {
 	cmd.Flags().StringVarP(&f.name, "name", "n", "", "Template name")
 	cmd.Flags().StringVar(&f.note, "note", "", "Template description")
 	cmd.Flags().BoolVar(&f.force, "force", false, "Overwrite existing template")
-	cmd.Flags().StringVar(&f.title, "title", "", "Title")
-	cmd.Flags().StringVar(&f.author, "author", "", "Author")
-	cmd.Flags().StringVar(&f.subject, "subject", "", "Subject")
-	cmd.Flags().StringVar(&f.keywords, "keywords", "", "Keywords")
-	cmd.Flags().StringVar(&f.creator, "creator", "", "Creator")
-	cmd.Flags().StringVar(&f.producer, "producer", "", "Producer")
-	cmd.Flags().StringVar(&f.createdAt, "creation-date", "", "Creation date")
-	cmd.Flags().StringVar(&f.modifiedAt, "mod-date", "", "Modification date")
+	addMetadataPatchFlags(cmd, &f.metadata, metadataFlagUsageDefault)
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
-}
-
-func patchFromTemplateSaveFlags(cmd *cobra.Command, f *templateSaveFlags) model.MetadataPatch {
-	var patch model.MetadataPatch
-	if cmd.Flags().Changed("title") {
-		patch.Title = &f.title
-	}
-	if cmd.Flags().Changed("author") {
-		patch.Author = &f.author
-	}
-	if cmd.Flags().Changed("subject") {
-		patch.Subject = &f.subject
-	}
-	if cmd.Flags().Changed("keywords") {
-		patch.Keywords = &f.keywords
-	}
-	if cmd.Flags().Changed("creator") {
-		patch.Creator = &f.creator
-	}
-	if cmd.Flags().Changed("producer") {
-		patch.Producer = &f.producer
-	}
-	if cmd.Flags().Changed("creation-date") {
-		patch.CreationDate = &f.createdAt
-	}
-	if cmd.Flags().Changed("mod-date") {
-		patch.ModDate = &f.modifiedAt
-	}
-	return patch
 }
 
 func newTemplateApplyCmd(handlers *app.Handlers) *cobra.Command {
@@ -149,11 +120,12 @@ func newTemplateApplyCmd(handlers *app.Handlers) *cobra.Command {
 					Strict: f.strict,
 					JSON:   f.asJSON,
 				},
+				Overrides: patchFromMetadataFlags(cmd, &f.metadata),
 			}
 			if err := validate.TemplateApplyRequest(req); err != nil {
 				return err
 			}
-			result, err := handlers.TemplateApply(context.Background(), req)
+			result, err := handlers.TemplateApply(commandContext(cmd), req)
 			if err != nil {
 				return err
 			}
@@ -169,6 +141,7 @@ func newTemplateApplyCmd(handlers *app.Handlers) *cobra.Command {
 	cmd.Flags().BoolVarP(&f.inPlace, "in-place", "i", false, "Modify file in place using safe atomic replace")
 	cmd.Flags().BoolVarP(&f.strict, "strict", "s", false, "Reject invalid metadata instead of auto-correcting")
 	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Emit result JSON")
+	addMetadataPatchFlags(cmd, &f.metadata, metadataFlagUsageOverride)
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("file")
 
@@ -182,7 +155,7 @@ func newTemplateListCmd(handlers *app.Handlers) *cobra.Command {
 		Use:   "list",
 		Short: "List templates",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			records, err := handlers.TemplateList(context.Background())
+			records, err := handlers.TemplateList(commandContext(cmd))
 			if err != nil {
 				return err
 			}
@@ -204,7 +177,7 @@ func newTemplateShowCmd(handlers *app.Handlers) *cobra.Command {
 		Use:   "show",
 		Short: "Show template",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			record, err := handlers.TemplateShow(context.Background(), f.name)
+			record, err := handlers.TemplateShow(commandContext(cmd), f.name)
 			if err != nil {
 				return err
 			}
@@ -228,12 +201,91 @@ func newTemplateDeleteCmd(handlers *app.Handlers) *cobra.Command {
 		Use:   "delete",
 		Short: "Delete template",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return handlers.TemplateDelete(context.Background(), f.name)
+			return handlers.TemplateDelete(commandContext(cmd), f.name)
 		},
 	}
 
 	cmd.Flags().StringVarP(&f.name, "name", "n", "", "Template name")
 	_ = cmd.MarkFlagRequired("name")
 
+	return cmd
+}
+
+func newTemplateExportCmd(handlers *app.Handlers) *cobra.Command {
+	f := &templateExportFlags{}
+
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export templates as JSON",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			records, err := handlers.TemplateList(commandContext(cmd))
+			if err != nil {
+				return err
+			}
+			payload, err := template.MarshalRecords(records)
+			if err != nil {
+				return &model.AppError{
+					Code:    model.ErrInternal,
+					Message: "encode template export",
+					Cause:   err,
+				}
+			}
+			if f.out == "" || f.out == "-" {
+				_, err = cmd.OutOrStdout().Write(payload)
+				return err
+			}
+			if err := filesafe.WriteAtomic(f.out, payload, 0o644); err != nil {
+				return &model.AppError{
+					Code:    model.ErrIO,
+					Message: fmt.Sprintf("write template export %q", f.out),
+					Cause:   err,
+				}
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Exported %d template(s) to %s\n", len(records), f.out)
+			return err
+		},
+	}
+
+	cmd.Flags().StringVarP(&f.out, "out", "o", "", "Write export JSON to a file instead of stdout")
+	return cmd
+}
+
+func newTemplateImportCmd(handlers *app.Handlers) *cobra.Command {
+	f := &templateImportFlags{}
+
+	cmd := &cobra.Command{
+		Use:   "import",
+		Short: "Import templates from JSON",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			data, err := readInputBytes(cmd, f.file, "template import file")
+			if err != nil {
+				return err
+			}
+			records, err := template.UnmarshalRecords(data)
+			if err != nil {
+				return &model.AppError{
+					Code:    model.ErrValidation,
+					Message: "decode template import data",
+					Cause:   err,
+				}
+			}
+			for _, record := range records {
+				if _, err := handlers.TemplateSave(commandContext(cmd), model.TemplateSaveRequest{
+					Name:     record.Name,
+					Note:     record.Note,
+					Force:    f.force,
+					Metadata: record.Metadata,
+				}); err != nil {
+					return err
+				}
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Imported %d template(s)\n", len(records))
+			return err
+		},
+	}
+
+	cmd.Flags().StringVarP(&f.file, "file", "f", "", "Template import JSON file or - for stdin")
+	cmd.Flags().BoolVar(&f.force, "force", false, "Overwrite existing templates with matching names")
+	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }

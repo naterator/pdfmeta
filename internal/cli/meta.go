@@ -26,7 +26,7 @@ func newSelfupdateCmd(run func(context.Context, io.Writer) error) *cobra.Command
 		Short: "Download and install the latest release",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(context.Background(), cmd.OutOrStdout())
+			return run(commandContext(cmd), cmd.OutOrStdout())
 		},
 	}
 }

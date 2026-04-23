@@ -52,6 +52,7 @@ type MetadataWriteRequest struct {
 // BatchRequest coordinates operation execution across many files.
 type BatchRequest struct {
 	ManifestPath    string
+	ManifestBytes   []byte
 	ContinueOnError bool
 	Strict          bool
 	JSON            bool

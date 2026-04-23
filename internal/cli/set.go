@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 
 	"pdfmeta/internal/app"
@@ -12,19 +10,13 @@ import (
 )
 
 type setFlags struct {
-	file       string
-	out        string
-	inPlace    bool
-	strict     bool
-	asJSON     bool
-	title      string
-	author     string
-	subject    string
-	keywords   string
-	creator    string
-	producer   string
-	createdAt  string
-	modifiedAt string
+	file     string
+	out      string
+	inPlace  bool
+	strict   bool
+	asJSON   bool
+	fromJSON string
+	metadata metadataStringFlags
 }
 
 func newSetCmd(handlers *app.Handlers) *cobra.Command {
@@ -33,6 +25,10 @@ func newSetCmd(handlers *app.Handlers) *cobra.Command {
 		Use:   "set",
 		Short: "Set metadata fields",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			jsonPatch, err := readMetadataPatchInput(cmd, f.fromJSON)
+			if err != nil {
+				return err
+			}
 			req := model.SetRequest{
 				IO: model.IOOptions{
 					InputPath:  f.file,
@@ -43,12 +39,12 @@ func newSetCmd(handlers *app.Handlers) *cobra.Command {
 					Strict: f.strict,
 					JSON:   f.asJSON,
 				},
-				Changes: patchFromSetFlags(cmd, f),
+				Changes: model.MergeMetadataPatch(jsonPatch, patchFromMetadataFlags(cmd, &f.metadata)),
 			}
 			if err := validate.SetRequest(req); err != nil {
 				return err
 			}
-			result, err := handlers.Set(context.Background(), req)
+			result, err := handlers.Set(commandContext(cmd), req)
 			if err != nil {
 				return err
 			}
@@ -63,45 +59,9 @@ func newSetCmd(handlers *app.Handlers) *cobra.Command {
 	cmd.Flags().BoolVarP(&f.inPlace, "in-place", "i", false, "Modify file in place using safe atomic replace")
 	cmd.Flags().BoolVarP(&f.strict, "strict", "s", false, "Reject invalid metadata instead of auto-correcting")
 	cmd.Flags().BoolVarP(&f.asJSON, "json", "j", false, "Emit result JSON")
-
-	cmd.Flags().StringVar(&f.title, "title", "", "Title")
-	cmd.Flags().StringVar(&f.author, "author", "", "Author")
-	cmd.Flags().StringVar(&f.subject, "subject", "", "Subject")
-	cmd.Flags().StringVar(&f.keywords, "keywords", "", "Keywords")
-	cmd.Flags().StringVar(&f.creator, "creator", "", "Creator")
-	cmd.Flags().StringVar(&f.producer, "producer", "", "Producer")
-	cmd.Flags().StringVar(&f.createdAt, "creation-date", "", "Creation date")
-	cmd.Flags().StringVar(&f.modifiedAt, "mod-date", "", "Modification date")
+	cmd.Flags().StringVar(&f.fromJSON, "from-json", "", "Read metadata fields from a JSON file or - for stdin")
+	addMetadataPatchFlags(cmd, &f.metadata, metadataFlagUsageDefault)
 	_ = cmd.MarkFlagRequired("file")
 
 	return cmd
-}
-
-func patchFromSetFlags(cmd *cobra.Command, f *setFlags) model.MetadataPatch {
-	var patch model.MetadataPatch
-	if cmd.Flags().Changed("title") {
-		patch.Title = &f.title
-	}
-	if cmd.Flags().Changed("author") {
-		patch.Author = &f.author
-	}
-	if cmd.Flags().Changed("subject") {
-		patch.Subject = &f.subject
-	}
-	if cmd.Flags().Changed("keywords") {
-		patch.Keywords = &f.keywords
-	}
-	if cmd.Flags().Changed("creator") {
-		patch.Creator = &f.creator
-	}
-	if cmd.Flags().Changed("producer") {
-		patch.Producer = &f.producer
-	}
-	if cmd.Flags().Changed("creation-date") {
-		patch.CreationDate = &f.createdAt
-	}
-	if cmd.Flags().Changed("mod-date") {
-		patch.ModDate = &f.modifiedAt
-	}
-	return patch
 }

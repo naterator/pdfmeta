@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -55,7 +56,7 @@ func (e *Engine) Execute(ctx context.Context, req model.BatchRequest) (model.Bat
 			Message: "batch runner is required",
 		}
 	}
-	manifest, err := LoadManifest(req.ManifestPath)
+	manifest, err := loadManifestRequest(req)
 	if err != nil {
 		return model.BatchResult{}, err
 	}
@@ -134,6 +135,39 @@ func LoadManifest(path string) (Manifest, error) {
 		}
 	}
 	return m, nil
+}
+
+func LoadManifestBytes(data []byte) (Manifest, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return Manifest{}, &model.AppError{
+			Code:    model.ErrValidation,
+			Message: "manifest input is empty",
+		}
+	}
+
+	var m Manifest
+	if err := json.Unmarshal(trimmed, &m); err != nil {
+		return Manifest{}, &model.AppError{
+			Code:    model.ErrValidation,
+			Message: "decode manifest json",
+			Cause:   err,
+		}
+	}
+	if len(m.Items) == 0 {
+		return Manifest{}, &model.AppError{
+			Code:    model.ErrValidation,
+			Message: "manifest must include at least one item",
+		}
+	}
+	return m, nil
+}
+
+func loadManifestRequest(req model.BatchRequest) (Manifest, error) {
+	if len(req.ManifestBytes) > 0 || req.ManifestPath == "-" {
+		return LoadManifestBytes(req.ManifestBytes)
+	}
+	return LoadManifest(req.ManifestPath)
 }
 
 func (e *Engine) executeItem(ctx context.Context, item Item, strict bool) (model.BatchItemResult, error) {

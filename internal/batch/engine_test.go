@@ -122,6 +122,9 @@ func TestLoadManifestValidation(t *testing.T) {
 	empty := writeManifestBytes(t, []byte(`{"items":[]}`))
 	_, err = LoadManifest(empty)
 	assertCode(t, err, model.ErrValidation)
+
+	_, err = LoadManifestBytes(nil)
+	assertCode(t, err, model.ErrValidation)
 }
 
 func TestExecuteUnsupportedOp(t *testing.T) {
@@ -147,6 +150,26 @@ func TestExecuteCanceledContext(t *testing.T) {
 	cancel()
 	_, err := e.Execute(ctx, model.BatchRequest{ManifestPath: manifestPath})
 	assertCode(t, err, model.ErrInternal)
+}
+
+func TestExecuteManifestBytes(t *testing.T) {
+	manifestBytes := []byte(`{"items":[{"op":"show","input":"a.pdf"}]}`)
+	r := &fakeRunner{}
+	e := NewEngine(r)
+
+	res, err := e.Execute(context.Background(), model.BatchRequest{
+		ManifestPath:  "-",
+		ManifestBytes: manifestBytes,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if res.Total != 1 || res.Succeeded != 1 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if len(r.calls) != 1 || r.calls[0] != "show:a.pdf" {
+		t.Fatalf("unexpected calls: %v", r.calls)
+	}
 }
 
 func writeManifest(t *testing.T, m Manifest) string {

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"pdfmeta/internal/filesafe"
 	"pdfmeta/internal/model"
@@ -448,12 +449,40 @@ func parseInfoDict(dict string) model.Metadata {
 }
 
 func findDictValue(dict, key string) string {
-	re := regexp.MustCompile(`/` + regexp.QuoteMeta(key) + `\s+(\((?:\\.|[^\\)])*\)|<[^>]*>|/[^\s/<>\[\]()]+)`)
-	m := re.FindStringSubmatch(dict)
-	if len(m) != 2 {
-		return ""
+	for i := 0; i < len(dict); {
+		switch dict[i] {
+		case '(':
+			end, ok := scanPDFLiteral(dict, i)
+			if !ok {
+				return ""
+			}
+			i = end
+		case '<':
+			if i+1 < len(dict) && dict[i+1] == '<' {
+				i += 2
+				continue
+			}
+			end, ok := scanPDFHexString(dict, i)
+			if !ok {
+				return ""
+			}
+			i = end
+		case '/':
+			nameEnd := scanPDFNameEnd(dict, i+1)
+			if dict[i+1:nameEnd] == key {
+				valueStart := skipPDFWhitespace(dict, nameEnd)
+				valueEnd, ok := scanPDFValue(dict, valueStart)
+				if !ok {
+					return ""
+				}
+				return dict[valueStart:valueEnd]
+			}
+			i = nameEnd
+		default:
+			i++
+		}
 	}
-	return m[1]
+	return ""
 }
 
 func decodePDFString(raw string) string {
@@ -462,12 +491,10 @@ func decodePDFString(raw string) string {
 		return ""
 	}
 	if strings.HasPrefix(raw, "(") && strings.HasSuffix(raw, ")") && len(raw) >= 2 {
-		s := raw[1 : len(raw)-1]
-		replacer := strings.NewReplacer(`\\`, `\`, `\(`, `(`, `\)`, `)`, `\n`, "\n", `\r`, "\r", `\t`, "\t")
-		return replacer.Replace(s)
+		return decodePDFBytes(decodePDFLiteral(raw[1 : len(raw)-1]))
 	}
 	if strings.HasPrefix(raw, "<") && strings.HasSuffix(raw, ">") {
-		hex := raw[1 : len(raw)-1]
+		hex := compactPDFHex(raw[1 : len(raw)-1])
 		if len(hex)%2 == 1 {
 			hex += "0"
 		}
@@ -479,12 +506,185 @@ func decodePDFString(raw string) string {
 			}
 			buf = append(buf, byte(v))
 		}
-		return string(buf)
+		return decodePDFBytes(buf)
 	}
 	if strings.HasPrefix(raw, "/") {
 		return strings.TrimPrefix(raw, "/")
 	}
 	return raw
+}
+
+func scanPDFValue(s string, start int) (int, bool) {
+	if start >= len(s) {
+		return 0, false
+	}
+	switch s[start] {
+	case '(':
+		return scanPDFLiteral(s, start)
+	case '<':
+		if start+1 < len(s) && s[start+1] == '<' {
+			end, ok := matchDictEnd(s, start)
+			if !ok {
+				return 0, false
+			}
+			return end + 2, true
+		}
+		return scanPDFHexString(s, start)
+	case '/':
+		return scanPDFNameEnd(s, start+1), true
+	default:
+		end := start
+		for end < len(s) && !isPDFDelimiter(s[end]) {
+			end++
+		}
+		return end, end > start
+	}
+}
+
+func scanPDFLiteral(s string, start int) (int, bool) {
+	if start >= len(s) || s[start] != '(' {
+		return 0, false
+	}
+	depth := 1
+	for i := start + 1; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			i++
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func scanPDFHexString(s string, start int) (int, bool) {
+	if start >= len(s) || s[start] != '<' {
+		return 0, false
+	}
+	for i := start + 1; i < len(s); i++ {
+		if s[i] == '>' {
+			return i + 1, true
+		}
+	}
+	return 0, false
+}
+
+func scanPDFNameEnd(s string, start int) int {
+	end := start
+	for end < len(s) && !isPDFDelimiter(s[end]) {
+		end++
+	}
+	return end
+}
+
+func skipPDFWhitespace(s string, start int) int {
+	for start < len(s) && isPDFWhitespace(s[start]) {
+		start++
+	}
+	return start
+}
+
+func isPDFDelimiter(c byte) bool {
+	if isPDFWhitespace(c) {
+		return true
+	}
+	switch c {
+	case '(', ')', '<', '>', '[', ']', '{', '}', '/', '%':
+		return true
+	default:
+		return false
+	}
+}
+
+func isPDFWhitespace(c byte) bool {
+	switch c {
+	case 0x00, '\t', '\n', '\f', '\r', ' ':
+		return true
+	default:
+		return false
+	}
+}
+
+func decodePDFLiteral(s string) []byte {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' {
+			out = append(out, s[i])
+			continue
+		}
+		i++
+		if i >= len(s) {
+			break
+		}
+		switch s[i] {
+		case 'n':
+			out = append(out, '\n')
+		case 'r':
+			out = append(out, '\r')
+		case 't':
+			out = append(out, '\t')
+		case 'b':
+			out = append(out, '\b')
+		case 'f':
+			out = append(out, '\f')
+		case '(', ')', '\\':
+			out = append(out, s[i])
+		case '\r':
+			if i+1 < len(s) && s[i+1] == '\n' {
+				i++
+			}
+		case '\n':
+		default:
+			if s[i] >= '0' && s[i] <= '7' {
+				end := i + 1
+				for end < len(s) && end < i+3 && s[end] >= '0' && s[end] <= '7' {
+					end++
+				}
+				v, err := strconv.ParseUint(s[i:end], 8, 8)
+				if err == nil {
+					out = append(out, byte(v))
+				}
+				i = end - 1
+				continue
+			}
+			out = append(out, s[i])
+		}
+	}
+	return out
+}
+
+func compactPDFHex(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if !isPDFWhitespace(s[i]) {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+func decodePDFBytes(b []byte) string {
+	if len(b) >= 2 && b[0] == 0xFE && b[1] == 0xFF {
+		return decodeUTF16BE(b[2:])
+	}
+	return string(b)
+}
+
+func decodeUTF16BE(b []byte) string {
+	if len(b) < 2 {
+		return ""
+	}
+	units := make([]uint16, 0, len(b)/2)
+	for i := 0; i+1 < len(b); i += 2 {
+		units = append(units, uint16(b[i])<<8|uint16(b[i+1]))
+	}
+	return string(utf16.Decode(units))
 }
 
 func mergeMetadata(primary model.Metadata, fallback model.Metadata) model.Metadata {
@@ -550,7 +750,7 @@ func renderInfoObject(objNr int, m model.Metadata) []byte {
 		if strings.TrimSpace(e.v) == "" {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("\n/%s (%s)", e.k, escapePDFLiteral(e.v)))
+		b.WriteString(fmt.Sprintf("\n/%s %s", e.k, encodePDFString(e.v)))
 	}
 	b.WriteString("\n>>\nendobj\n")
 	return []byte(b.String())
@@ -589,12 +789,39 @@ func renderTrailer(size int, root objRef, info objRef, prev int) []byte {
 
 func escapePDFLiteral(s string) string {
 	replacer := strings.NewReplacer(
-		`\\`, `\\\\`,
-		`(`, `\\(`,
-		`)`, `\\)`,
-		"\n", `\\n`,
-		"\r", `\\r`,
-		"\t", `\\t`,
+		"\\", "\\\\",
+		"(", "\\(",
+		")", "\\)",
+		"\n", "\\n",
+		"\r", "\\r",
+		"\t", "\\t",
 	)
 	return replacer.Replace(s)
+}
+
+func encodePDFString(s string) string {
+	if needsUTF16BE(s) {
+		return "<" + encodeUTF16BEHex(s) + ">"
+	}
+	return "(" + escapePDFLiteral(s) + ")"
+}
+
+func needsUTF16BE(s string) bool {
+	for _, r := range s {
+		if r > 0x7F {
+			return true
+		}
+	}
+	return false
+}
+
+func encodeUTF16BEHex(s string) string {
+	units := utf16.Encode([]rune(s))
+	var b strings.Builder
+	b.Grow(4 + len(units)*4)
+	b.WriteString("FEFF")
+	for _, unit := range units {
+		b.WriteString(fmt.Sprintf("%04X", unit))
+	}
+	return b.String()
 }

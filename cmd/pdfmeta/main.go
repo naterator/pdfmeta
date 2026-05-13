@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 
@@ -19,7 +18,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if err := cli.ExecuteWithDependencies(args, stdout, stderr, deps); err != nil {
-		_, _ = fmt.Fprintln(stderr, err)
 		return model.ExitCode(err)
 	}
 	return 0

@@ -1,6 +1,7 @@
 package output
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -94,7 +95,8 @@ func (t textFormatter) TemplateList(records []model.TemplateRecord) ([]byte, err
 }
 
 func (textFormatter) Err(err error) ([]byte, error) {
-	if ae, ok := err.(*model.AppError); ok {
+	var ae *model.AppError
+	if errors.As(err, &ae) {
 		return []byte(fmt.Sprintf("error[%s]: %s\n", ae.Code, ae.Error())), nil
 	}
 	return []byte("error: " + err.Error() + "\n"), nil

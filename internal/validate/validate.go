@@ -61,6 +61,24 @@ func TemplateSaveRequest(req model.TemplateSaveRequest) error {
 	return nil
 }
 
+// TemplateImportRequest validates a batch of persisted template payloads.
+func TemplateImportRequest(req model.TemplateImportRequest) error {
+	if len(req.Records) == 0 {
+		return validationError("template import data must include at least one template")
+	}
+	for _, record := range req.Records {
+		if err := TemplateSaveRequest(model.TemplateSaveRequest{
+			Name:     record.Name,
+			Note:     record.Note,
+			Force:    req.Force,
+			Metadata: record.Metadata,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // TemplateApplyRequest validates template name and write destination.
 func TemplateApplyRequest(req model.TemplateApplyRequest) error {
 	if strings.TrimSpace(req.Name) == "" {

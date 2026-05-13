@@ -4,37 +4,41 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"pdfmeta/internal/model"
+	"pdfmeta/internal/validate"
 )
 
 type fakeService struct {
-	showCtx          context.Context
-	showReq          model.ShowRequest
-	showResult       model.ShowResult
-	showErr          error
-	setCtx           context.Context
-	setReq           model.SetRequest
-	setResult        model.ShowResult
-	setErr           error
-	unsetCtx         context.Context
-	unsetReq         model.UnsetRequest
-	unsetResult      model.ShowResult
-	unsetErr         error
-	batchCtx         context.Context
-	batchReq         model.BatchRequest
-	batchResult      model.BatchResult
-	batchErr         error
-	templateSaveReq  model.TemplateSaveRequest
-	templateSaveReqs []model.TemplateSaveRequest
-	templateSaveErr  error
-	templateApplyReq model.TemplateApplyRequest
-	templateApplyErr error
-	templateShowName string
-	templateDelName  string
-	templateListHit  bool
-	templateListData []model.TemplateRecord
+	showCtx           context.Context
+	showReq           model.ShowRequest
+	showResult        model.ShowResult
+	showErr           error
+	setCtx            context.Context
+	setReq            model.SetRequest
+	setResult         model.ShowResult
+	setErr            error
+	unsetCtx          context.Context
+	unsetReq          model.UnsetRequest
+	unsetResult       model.ShowResult
+	unsetErr          error
+	batchCtx          context.Context
+	batchReq          model.BatchRequest
+	batchResult       model.BatchResult
+	batchErr          error
+	templateSaveReq   model.TemplateSaveRequest
+	templateSaveReqs  []model.TemplateSaveRequest
+	templateSaveErr   error
+	templateImportReq model.TemplateImportRequest
+	templateImportErr error
+	templateApplyReq  model.TemplateApplyRequest
+	templateApplyErr  error
+	templateShowName  string
+	templateDelName   string
+	templateListHit   bool
+	templateListData  []model.TemplateRecord
 }
 
 func (f *fakeService) Show(ctx context.Context, req model.ShowRequest) (model.ShowResult, error) {
@@ -89,6 +93,17 @@ func (f *fakeService) TemplateSave(_ context.Context, req model.TemplateSaveRequ
 		return model.TemplateRecord{}, f.templateSaveErr
 	}
 	return model.TemplateRecord{Name: req.Name, Metadata: req.Metadata}, nil
+}
+
+func (f *fakeService) TemplateImport(_ context.Context, req model.TemplateImportRequest) ([]model.TemplateRecord, error) {
+	if f.templateImportErr != nil {
+		return nil, f.templateImportErr
+	}
+	if err := validate.TemplateImportRequest(req); err != nil {
+		return nil, err
+	}
+	f.templateImportReq = req
+	return req.Records, nil
 }
 
 func (f *fakeService) TemplateApply(_ context.Context, req model.TemplateApplyRequest) (model.ShowResult, error) {
@@ -203,6 +218,30 @@ func TestShowCommandFieldFilterJSONPreservesEmptyValue(t *testing.T) {
 	}
 }
 
+func TestExecuteRendersJSONError(t *testing.T) {
+	t.Parallel()
+	svc := &fakeService{
+		showErr: &model.AppError{Code: model.ErrNotFound, Message: "missing pdf"},
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	err := ExecuteWithDependencies([]string{"show", "--file", "missing.pdf", "--json"}, stdout, stderr, Dependencies{Service: svc})
+	if err == nil {
+		t.Fatalf("expected execute error")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %q", stdout.String())
+	}
+	got := stderr.String()
+	if !strings.Contains(got, `"error": "missing pdf"`) || !strings.Contains(got, `"code": "not_found"`) {
+		t.Fatalf("expected json error output, got:\n%s", got)
+	}
+	if strings.Contains(got, "pdfmeta:") {
+		t.Fatalf("json error should not include cli prefix, got:\n%s", got)
+	}
+}
+
 func TestSetCommandWiresRequest(t *testing.T) {
 	t.Parallel()
 	svc := &fakeService{}
@@ -241,6 +280,50 @@ func TestSetCommandMergesJSONInputAndFlags(t *testing.T) {
 	}
 	if svc.setReq.Changes.Title == nil || *svc.setReq.Changes.Title != "flag title" {
 		t.Fatalf("expected title from flag, got %+v", svc.setReq.Changes)
+	}
+}
+
+func TestSetCommandRejectsMalformedJSONInput(t *testing.T) {
+	t.Parallel()
+	svc := &fakeService{}
+	cmd := NewRootCmdWithDependencies(Dependencies{Service: svc})
+	out := &bytes.Buffer{}
+	cmd.SetIn(bytes.NewBufferString(`{"title":`))
+	cmd.SetOut(out)
+	cmd.SetErr(out)
+	cmd.SetArgs([]string{"set", "--file", "in.pdf", "--out", "out.pdf", "--from-json", "-", "--title", "ignored"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected malformed json input error")
+	}
+	if !strings.Contains(err.Error(), "decode metadata json") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.setCtx != nil {
+		t.Fatalf("expected service not to be called, got request %+v", svc.setReq)
+	}
+}
+
+func TestSetCommandRejectsTrailingJSONInput(t *testing.T) {
+	t.Parallel()
+	svc := &fakeService{}
+	cmd := NewRootCmdWithDependencies(Dependencies{Service: svc})
+	out := &bytes.Buffer{}
+	cmd.SetIn(bytes.NewBufferString(`{"title":"json title"} {"author":"extra"}`))
+	cmd.SetOut(out)
+	cmd.SetErr(out)
+	cmd.SetArgs([]string{"set", "--file", "in.pdf", "--out", "out.pdf", "--from-json", "-"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected trailing json input error")
+	}
+	if !strings.Contains(err.Error(), "unexpected trailing content") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.setCtx != nil {
+		t.Fatalf("expected service not to be called, got request %+v", svc.setReq)
 	}
 }
 
@@ -420,7 +503,7 @@ func TestTemplateImportSavesRecords(t *testing.T) {
 	svc := &fakeService{}
 	cmd := NewRootCmdWithDependencies(Dependencies{Service: svc})
 	out := &bytes.Buffer{}
-	cmd.SetIn(bytes.NewBufferString(`{"templates":[{"name":"a"},{"name":"b","note":"team"}]}`))
+	cmd.SetIn(bytes.NewBufferString(`{"templates":[{"name":"a","metadata":{"title":"v1"}},{"name":"b","note":"team","metadata":{"author":"Docs"}}]}`))
 	cmd.SetOut(out)
 	cmd.SetErr(out)
 	cmd.SetArgs([]string{"template", "import", "--file", "-", "--force"})
@@ -428,16 +511,60 @@ func TestTemplateImportSavesRecords(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute template import: %v", err)
 	}
-	if len(svc.templateSaveReqs) != 2 {
-		t.Fatalf("expected 2 imported templates, got %d", len(svc.templateSaveReqs))
+	if len(svc.templateImportReq.Records) != 2 {
+		t.Fatalf("expected 2 imported templates, got %d", len(svc.templateImportReq.Records))
 	}
-	if !svc.templateSaveReqs[0].Force || !svc.templateSaveReqs[1].Force {
-		t.Fatalf("expected force on imported saves: %+v", svc.templateSaveReqs)
+	if !svc.templateImportReq.Force {
+		t.Fatalf("expected force on imported request: %+v", svc.templateImportReq)
 	}
-	if svc.templateSaveReqs[1].Note != "team" {
-		t.Fatalf("expected imported note, got %+v", svc.templateSaveReqs[1])
+	if svc.templateImportReq.Records[1].Note != "team" {
+		t.Fatalf("expected imported note, got %+v", svc.templateImportReq.Records[1])
 	}
 	if got := out.String(); !bytes.Contains(out.Bytes(), []byte("Imported 2 template(s)")) {
 		t.Fatalf("unexpected import output:\n%s", got)
+	}
+}
+
+func TestTemplateImportRejectsEmptyTemplateMetadata(t *testing.T) {
+	t.Parallel()
+	svc := &fakeService{}
+	cmd := NewRootCmdWithDependencies(Dependencies{Service: svc})
+	out := &bytes.Buffer{}
+	cmd.SetIn(bytes.NewBufferString(`{"templates":[{"name":"empty","metadata":{}}]}`))
+	cmd.SetOut(out)
+	cmd.SetErr(out)
+	cmd.SetArgs([]string{"template", "import", "--file", "-"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected template import validation error")
+	}
+	if !strings.Contains(err.Error(), "template metadata must include at least one field") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(svc.templateImportReq.Records) != 0 {
+		t.Fatalf("expected no valid import request, got %+v", svc.templateImportReq)
+	}
+}
+
+func TestTemplateImportRejectsEmptyTemplateCollection(t *testing.T) {
+	t.Parallel()
+	svc := &fakeService{}
+	cmd := NewRootCmdWithDependencies(Dependencies{Service: svc})
+	out := &bytes.Buffer{}
+	cmd.SetIn(bytes.NewBufferString(`{"templates":[]}`))
+	cmd.SetOut(out)
+	cmd.SetErr(out)
+	cmd.SetArgs([]string{"template", "import", "--file", "-"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected template import validation error")
+	}
+	if !strings.Contains(err.Error(), "must include at least one template") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(svc.templateImportReq.Records) != 0 {
+		t.Fatalf("expected no valid import request, got %+v", svc.templateImportReq)
 	}
 }

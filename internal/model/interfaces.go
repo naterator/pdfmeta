@@ -9,6 +9,7 @@ type Service interface {
 	Unset(context.Context, UnsetRequest) (ShowResult, error)
 	Batch(context.Context, BatchRequest) (BatchResult, error)
 	TemplateSave(context.Context, TemplateSaveRequest) (TemplateRecord, error)
+	TemplateImport(context.Context, TemplateImportRequest) ([]TemplateRecord, error)
 	TemplateApply(context.Context, TemplateApplyRequest) (ShowResult, error)
 	TemplateList(context.Context) ([]TemplateRecord, error)
 	TemplateShow(context.Context, string) (TemplateRecord, error)
@@ -24,6 +25,7 @@ type MetadataStore interface {
 // TemplateStore handles persistent template management.
 type TemplateStore interface {
 	Save(context.Context, TemplateRecord, bool) (TemplateRecord, error)
+	Import(context.Context, []TemplateRecord, bool) ([]TemplateRecord, error)
 	Get(context.Context, string) (TemplateRecord, error)
 	List(context.Context) ([]TemplateRecord, error)
 	Delete(context.Context, string) error

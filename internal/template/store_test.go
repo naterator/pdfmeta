@@ -106,6 +106,83 @@ func TestListSorted(t *testing.T) {
 	}
 }
 
+func TestImportStoresAllRecordsTogether(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	records, err := store.Import(ctx, []model.TemplateRecord{
+		{Name: "zeta", Metadata: model.MetadataPatch{Title: strPtr("z")}},
+		{Name: "alpha", Metadata: model.MetadataPatch{Title: strPtr("a")}},
+	}, false)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("imported count = %d, want 2", len(records))
+	}
+
+	list, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 2 || list[0].Name != "alpha" || list[1].Name != "zeta" {
+		t.Fatalf("unexpected list: %#v", list)
+	}
+}
+
+func TestImportConflictDoesNotPersistPrefix(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	if _, err := store.Save(ctx, model.TemplateRecord{Name: "existing"}, false); err != nil {
+		t.Fatalf("Save existing: %v", err)
+	}
+
+	_, err := store.Import(ctx, []model.TemplateRecord{
+		{Name: "new"},
+		{Name: "existing"},
+	}, false)
+	assertCode(t, err, model.ErrConflict)
+
+	list, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 1 || list[0].Name != "existing" {
+		t.Fatalf("import persisted a partial prefix: %#v", list)
+	}
+}
+
+func TestImportForceOverwritesAtomically(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+
+	if _, err := store.Save(ctx, model.TemplateRecord{Name: "existing", Metadata: model.MetadataPatch{Title: strPtr("old")}}, false); err != nil {
+		t.Fatalf("Save existing: %v", err)
+	}
+	if _, err := store.Import(ctx, []model.TemplateRecord{
+		{Name: "existing", Metadata: model.MetadataPatch{Title: strPtr("new")}},
+		{Name: "added", Metadata: model.MetadataPatch{Author: strPtr("team")}},
+	}, true); err != nil {
+		t.Fatalf("Import force: %v", err)
+	}
+
+	got, err := store.Get(ctx, "existing")
+	if err != nil {
+		t.Fatalf("Get existing: %v", err)
+	}
+	if got.Metadata.Title == nil || *got.Metadata.Title != "new" {
+		t.Fatalf("expected overwritten title, got %#v", got.Metadata.Title)
+	}
+	list, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("unexpected list: %#v", list)
+	}
+}
+
 func TestValidationAndNotFound(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()

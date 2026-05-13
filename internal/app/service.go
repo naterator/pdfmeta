@@ -44,6 +44,9 @@ func NewService(cfg ServiceConfig) *Service {
 }
 
 func (s *Service) Show(ctx context.Context, req model.ShowRequest) (model.ShowResult, error) {
+	if err := validate.ShowRequest(req); err != nil {
+		return model.ShowResult{}, err
+	}
 	rr, err := s.metadata.Read(ctx, req.InputPath)
 	if err != nil {
 		return model.ShowResult{}, err
@@ -63,7 +66,10 @@ func (s *Service) Show(ctx context.Context, req model.ShowRequest) (model.ShowRe
 }
 
 func (s *Service) Set(ctx context.Context, req model.SetRequest) (model.ShowResult, error) {
-	patch, err := normalizePatch(req.Changes, req.Exec.Strict)
+	if err := validate.SetRequest(req); err != nil {
+		return model.ShowResult{}, err
+	}
+	patch, patchNormalized, err := normalizePatch(req.Changes, req.Exec.Strict)
 	if err != nil {
 		return model.ShowResult{}, err
 	}
@@ -87,11 +93,14 @@ func (s *Service) Set(ctx context.Context, req model.SetRequest) (model.ShowResu
 		Metadata:   meta,
 		InfoFound:  rr.InfoFound,
 		XMPFound:   rr.XMPFound,
-		Normalized: rr.Normalized || normalized,
+		Normalized: rr.Normalized || patchNormalized || normalized,
 	}, nil
 }
 
 func (s *Service) Unset(ctx context.Context, req model.UnsetRequest) (model.ShowResult, error) {
+	if err := validate.UnsetRequest(req); err != nil {
+		return model.ShowResult{}, err
+	}
 	fields, err := validate.NormalizeFields(req.Fields)
 	if err != nil {
 		return model.ShowResult{}, err
@@ -126,7 +135,10 @@ func (s *Service) Batch(ctx context.Context, req model.BatchRequest) (model.Batc
 }
 
 func (s *Service) TemplateSave(ctx context.Context, req model.TemplateSaveRequest) (model.TemplateRecord, error) {
-	patch, err := normalizePatch(req.Metadata, false)
+	if err := validate.TemplateSaveRequest(req); err != nil {
+		return model.TemplateRecord{}, err
+	}
+	patch, _, err := normalizePatch(req.Metadata, false)
 	if err != nil {
 		return model.TemplateRecord{}, err
 	}
@@ -138,7 +150,29 @@ func (s *Service) TemplateSave(ctx context.Context, req model.TemplateSaveReques
 	return s.templates.Save(ctx, record, req.Force)
 }
 
+func (s *Service) TemplateImport(ctx context.Context, req model.TemplateImportRequest) ([]model.TemplateRecord, error) {
+	if err := validate.TemplateImportRequest(req); err != nil {
+		return nil, err
+	}
+	records := make([]model.TemplateRecord, 0, len(req.Records))
+	for _, rec := range req.Records {
+		patch, _, err := normalizePatch(rec.Metadata, false)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, model.TemplateRecord{
+			Name:     strings.TrimSpace(rec.Name),
+			Note:     strings.TrimSpace(rec.Note),
+			Metadata: patch,
+		})
+	}
+	return s.templates.Import(ctx, records, req.Force)
+}
+
 func (s *Service) TemplateApply(ctx context.Context, req model.TemplateApplyRequest) (model.ShowResult, error) {
+	if err := validate.TemplateApplyRequest(req); err != nil {
+		return model.ShowResult{}, err
+	}
 	record, err := s.templates.Get(ctx, req.Name)
 	if err != nil {
 		return model.ShowResult{}, err
@@ -172,7 +206,7 @@ func effectiveOutputPath(io model.IOOptions) string {
 	return io.InputPath
 }
 
-func normalizePatch(patch model.MetadataPatch, strict bool) (model.MetadataPatch, error) {
+func normalizePatch(patch model.MetadataPatch, strict bool) (model.MetadataPatch, bool, error) {
 	var changed bool
 	fix := func(v **string) {
 		if *v == nil {
@@ -198,14 +232,13 @@ func normalizePatch(patch model.MetadataPatch, strict bool) (model.MetadataPatch
 	var err error
 	patch.CreationDate, changed, err = normalizeDatePtr(patch.CreationDate, strict, changed)
 	if err != nil {
-		return model.MetadataPatch{}, err
+		return model.MetadataPatch{}, false, err
 	}
 	patch.ModDate, changed, err = normalizeDatePtr(patch.ModDate, strict, changed)
 	if err != nil {
-		return model.MetadataPatch{}, err
+		return model.MetadataPatch{}, false, err
 	}
-	_ = changed
-	return patch, nil
+	return patch, changed, nil
 }
 
 func normalizeMetadata(meta model.Metadata, strict bool) (model.Metadata, bool, error) {

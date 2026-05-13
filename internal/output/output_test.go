@@ -2,6 +2,7 @@ package output
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -84,6 +85,15 @@ func TestFormatterErr(t *testing.T) {
 	}
 	if got := string(jsonOut); !strings.Contains(got, `"code": "validation"`) {
 		t.Fatalf("json Err output mismatch: %q", got)
+	}
+
+	wrappedErr := fmt.Errorf("pdfmeta: %w", appErr)
+	wrappedJSONOut, err := json.Err(wrappedErr)
+	if err != nil {
+		t.Fatalf("json Err wrapped error: %v", err)
+	}
+	if got := string(wrappedJSONOut); !strings.Contains(got, `"code": "validation"`) {
+		t.Fatalf("json Err wrapped output mismatch: %q", got)
 	}
 
 	plainOut, err := json.Err(errors.New("boom"))

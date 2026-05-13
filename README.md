@@ -108,6 +108,47 @@ cat ops.json | pdfmeta batch --manifest -
 | `--strict` | `-s` | Reject invalid metadata instead of auto-correcting |
 | `--json` | `-j` | Emit result JSON |
 
+Manifest files contain an `items` array. Each item includes an `op` and an `input` PDF path.
+
+| Key | Description |
+|-----|-------------|
+| `op` | One of `show`, `set`, `unset`, or `template-apply` |
+| `input` | Input PDF path |
+| `output` | Output PDF path for write operations |
+| `inPlace` | Modify `input` in place for write operations |
+| `set` | Metadata object for `set` items using keys like `title`, `author`, `creationDate`, and `modDate` |
+| `unset` | Metadata fields for `unset` items, such as `title`, `keywords`, `creation-date`, or `mod-date` |
+| `unsetAll` | Remove all supported metadata fields for `unset` items |
+| `template` | Template name for `template-apply` items |
+
+```json
+{
+  "items": [
+    {
+      "op": "set",
+      "input": "in.pdf",
+      "output": "out.pdf",
+      "set": {
+        "title": "Release Notes",
+        "author": "Docs Team"
+      }
+    },
+    {
+      "op": "unset",
+      "input": "out.pdf",
+      "inPlace": true,
+      "unset": ["keywords"]
+    },
+    {
+      "op": "template-apply",
+      "input": "out.pdf",
+      "output": "templated.pdf",
+      "template": "rel"
+    }
+  ]
+}
+```
+
 ### template
 
 Manage saved metadata templates. By default templates are stored at `~/.pdfmeta/templates.json`. Override with `PDFMETA_TEMPLATE_STORE`.
@@ -187,6 +228,7 @@ pdfmeta template export --out templates.json
 #### template import
 
 Import templates from JSON produced by `template export`. Supports either the wrapped `{"templates":[...]}` shape or a raw array of template records.
+Each imported template must include at least one metadata field.
 
 ```bash
 pdfmeta template import --file templates.json
@@ -207,6 +249,7 @@ pdfmeta version
 ### selfupdate
 
 Download and install the latest release from GitHub. Verifies SHA-256 checksums before replacing the binary.
+`selfupdate` is currently unavailable on Windows.
 
 ```bash
 pdfmeta selfupdate

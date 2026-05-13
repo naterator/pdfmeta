@@ -1,6 +1,10 @@
 package output
 
-import "pdfmeta/internal/model"
+import (
+	"errors"
+
+	"pdfmeta/internal/model"
+)
 
 type jsonFormatter struct{}
 
@@ -25,7 +29,8 @@ func (jsonFormatter) Err(err error) ([]byte, error) {
 		Error string          `json:"error"`
 		Code  model.ErrorCode `json:"code,omitempty"`
 	}
-	if ae, ok := err.(*model.AppError); ok {
+	var ae *model.AppError
+	if errors.As(err, &ae) {
 		return jsonBytes(payload{Error: ae.Error(), Code: ae.Code})
 	}
 	return jsonBytes(payload{Error: err.Error()})

@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 
+	"pdfmeta/internal/output"
+
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +27,11 @@ func ExecuteWithDependencies(args []string, stdout io.Writer, stderr io.Writer, 
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	if err := root.Execute(); err != nil {
+	executed, err := root.ExecuteC()
+	if err != nil {
+		if renderErr := writeCommandError(executed, stderr, err); renderErr != nil {
+			return fmt.Errorf("pdfmeta: %w", renderErr)
+		}
 		return fmt.Errorf("pdfmeta: %w", err)
 	}
 	return nil
@@ -36,4 +42,32 @@ func commandContext(cmd *cobra.Command) context.Context {
 		return cmd.Context()
 	}
 	return context.Background()
+}
+
+func writeCommandError(cmd *cobra.Command, fallback io.Writer, err error) error {
+	asJSON := commandRequestedJSON(cmd)
+	formatter, formatErr := output.NewFormatter(output.ParseFormat(asJSON))
+	if formatErr != nil {
+		return fmt.Errorf("create formatter: %w", formatErr)
+	}
+	payload, formatErr := formatter.Err(err)
+	if formatErr != nil {
+		return formatErr
+	}
+	w := fallback
+	if cmd != nil {
+		w = cmd.ErrOrStderr()
+	}
+	if _, writeErr := w.Write(payload); writeErr != nil {
+		return fmt.Errorf("write error output: %w", writeErr)
+	}
+	return nil
+}
+
+func commandRequestedJSON(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	flag := cmd.Flags().Lookup("json")
+	return flag != nil && flag.Changed
 }

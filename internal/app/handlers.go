@@ -40,6 +40,10 @@ func (h *Handlers) TemplateSave(ctx context.Context, req model.TemplateSaveReque
 	return h.svc.TemplateSave(ctx, req)
 }
 
+func (h *Handlers) TemplateImport(ctx context.Context, req model.TemplateImportRequest) ([]model.TemplateRecord, error) {
+	return h.svc.TemplateImport(ctx, req)
+}
+
 func (h *Handlers) TemplateApply(ctx context.Context, req model.TemplateApplyRequest) (model.ShowResult, error) {
 	return h.svc.TemplateApply(ctx, req)
 }

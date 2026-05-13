@@ -269,17 +269,14 @@ func newTemplateImportCmd(handlers *app.Handlers) *cobra.Command {
 					Cause:   err,
 				}
 			}
-			for _, record := range records {
-				if _, err := handlers.TemplateSave(commandContext(cmd), model.TemplateSaveRequest{
-					Name:     record.Name,
-					Note:     record.Note,
-					Force:    f.force,
-					Metadata: record.Metadata,
-				}); err != nil {
-					return err
-				}
+			imported, err := handlers.TemplateImport(commandContext(cmd), model.TemplateImportRequest{
+				Records: records,
+				Force:   f.force,
+			})
+			if err != nil {
+				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Imported %d template(s)\n", len(records))
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Imported %d template(s)\n", len(imported))
 			return err
 		},
 	}

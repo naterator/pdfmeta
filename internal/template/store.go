@@ -69,6 +69,63 @@ func (s *FileStore) Save(ctx context.Context, rec model.TemplateRecord, force bo
 	return rec, nil
 }
 
+func (s *FileStore) Import(ctx context.Context, records []model.TemplateRecord, force bool) ([]model.TemplateRecord, error) {
+	if err := ctxErr(ctx); err != nil {
+		return nil, err
+	}
+
+	state, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	next := fileState{Templates: append([]model.TemplateRecord(nil), state.Templates...)}
+	index := make(map[string]int, len(next.Templates)+len(records))
+	for i, rec := range next.Templates {
+		index[rec.Name] = i
+	}
+
+	seen := make(map[string]struct{}, len(records))
+	imported := make([]model.TemplateRecord, 0, len(records))
+	for _, rec := range records {
+		name := strings.TrimSpace(rec.Name)
+		if name == "" {
+			return nil, &model.AppError{
+				Code:    model.ErrValidation,
+				Message: "template name is required",
+			}
+		}
+		rec.Name = name
+
+		if _, ok := seen[rec.Name]; ok && !force {
+			return nil, &model.AppError{
+				Code:    model.ErrConflict,
+				Message: fmt.Sprintf("template %q appears more than once in import", rec.Name),
+			}
+		}
+		seen[rec.Name] = struct{}{}
+
+		if i, ok := index[rec.Name]; ok {
+			if !force {
+				return nil, &model.AppError{
+					Code:    model.ErrConflict,
+					Message: fmt.Sprintf("template %q already exists", rec.Name),
+				}
+			}
+			next.Templates[i] = rec
+		} else {
+			index[rec.Name] = len(next.Templates)
+			next.Templates = append(next.Templates, rec)
+		}
+		imported = append(imported, rec)
+	}
+
+	sortTemplates(next.Templates)
+	if err := s.store(next); err != nil {
+		return nil, err
+	}
+	return imported, nil
+}
+
 func (s *FileStore) Get(ctx context.Context, name string) (model.TemplateRecord, error) {
 	if err := ctxErr(ctx); err != nil {
 		return model.TemplateRecord{}, err

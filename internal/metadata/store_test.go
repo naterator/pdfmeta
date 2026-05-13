@@ -95,6 +95,97 @@ func TestWriteAndReadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestWriteEscapesPDFLiteralStringsOnce(t *testing.T) {
+	store := NewStore()
+	in := copyFixture(t, "minimal.pdf")
+	out := filepath.Join(t.TempDir(), "escaped.pdf")
+
+	title := "My Doc (rev 1)\nNext"
+	author := `A \ B`
+	if _, err := store.Write(context.Background(), model.MetadataWriteRequest{
+		InputPath:  in,
+		OutputPath: out,
+		Set: model.MetadataPatch{
+			Title:  &title,
+			Author: &author,
+		},
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if !bytes.Contains(b, []byte(`/Title (My Doc \(rev 1\)\nNext)`)) {
+		t.Fatalf("expected single escaped literal title, output:\n%s", b)
+	}
+	if bytes.Contains(b, []byte(`/Title (My Doc \\(rev 1\\)\\nNext)`)) {
+		t.Fatalf("title literal was double escaped:\n%s", b)
+	}
+
+	readBack, err := store.Read(context.Background(), out)
+	if err != nil {
+		t.Fatalf("Read(out): %v", err)
+	}
+	if readBack.Metadata.Title != title || readBack.Metadata.Author != author {
+		t.Fatalf("unexpected metadata readback: %#v", readBack.Metadata)
+	}
+}
+
+func TestWriteNonASCIIInfoStringsAsUTF16BEHex(t *testing.T) {
+	store := NewStore()
+	in := copyFixture(t, "minimal.pdf")
+	out := filepath.Join(t.TempDir(), "utf16.pdf")
+
+	title := "Caf\u00e9 \u2014 Release"
+	if _, err := store.Write(context.Background(), model.MetadataWriteRequest{
+		InputPath:  in,
+		OutputPath: out,
+		Set: model.MetadataPatch{
+			Title: &title,
+		},
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if !bytes.Contains(b, []byte(`/Title <FEFF`)) {
+		t.Fatalf("expected UTF-16BE hex title in Info dict, output:\n%s", b)
+	}
+	if bytes.Contains(b, []byte(`/Title (`)) {
+		t.Fatalf("did not expect non-ASCII title to be written as a literal string:\n%s", b)
+	}
+
+	readBack, err := store.Read(context.Background(), out)
+	if err != nil {
+		t.Fatalf("Read(out): %v", err)
+	}
+	if readBack.Metadata.Title != title {
+		t.Fatalf("title readback = %q, want %q", readBack.Metadata.Title, title)
+	}
+}
+
+func TestParseInfoDictHandlesNestedParens(t *testing.T) {
+	meta := parseInfoDict(`<< /Title (My Doc (rev 1)) /Author (A \(B\)) >>`)
+	if meta.Title != "My Doc (rev 1)" {
+		t.Fatalf("title = %q", meta.Title)
+	}
+	if meta.Author != "A (B)" {
+		t.Fatalf("author = %q", meta.Author)
+	}
+}
+
+func TestParseInfoDictDecodesUTF16BEHex(t *testing.T) {
+	meta := parseInfoDict(`<< /Title <FEFF00430061006600E9> >>`)
+	if want := "Caf\u00e9"; meta.Title != want {
+		t.Fatalf("title = %q, want %q", meta.Title, want)
+	}
+}
+
 func TestWriteCreatesNativeInfoAndMetadataRefs(t *testing.T) {
 	store := NewStore()
 	in := copyFixture(t, "minimal.pdf")

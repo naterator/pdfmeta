@@ -52,6 +52,12 @@ type TemplateSaveRequest struct {
 	Metadata MetadataPatch `json:"metadata"`
 }
 
+// TemplateImportRequest persists a collection of reusable metadata templates.
+type TemplateImportRequest struct {
+	Records []TemplateRecord `json:"records"`
+	Force   bool             `json:"force"`
+}
+
 // TemplateApplyRequest applies a named template to a PDF.
 type TemplateApplyRequest struct {
 	Name      string        `json:"name"`
